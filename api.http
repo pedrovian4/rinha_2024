@@ -1,0 +1,14 @@
+
+### Transacoes
+POST localhost:8080/clientes/4/transacoes
+Content-Type: application/json
+
+{
+    "valor": 20,
+    "tipo" : "d",
+    "descricao" : "descricao"
+}
+
+### Extrato
+
+GET localhost:9999/clientes/1/extrato
