@@ -34,3 +34,5 @@ DO $$
 
 
 update clients set balance = 0;
+
+truncate transactions;

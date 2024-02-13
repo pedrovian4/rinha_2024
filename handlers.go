@@ -135,7 +135,7 @@ func (h *Handler) BankStmt(writer http.ResponseWriter, request *http.Request) {
 	rows, err := h.conn.Query(context.Background(), "SELECT value, type, description, created_at FROM transactions WHERE client_id = $1 ORDER BY created_at DESC LIMIT 10", id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			stmt.LastTransactions = make([]Transaction, 0)
+			stmt.LastTransactions = nil
 			return
 		} else {
 			http.Error(writer, err.Error(), http.StatusInternalServerError)
@@ -148,15 +148,12 @@ func (h *Handler) BankStmt(writer http.ResponseWriter, request *http.Request) {
 			if err != nil {
 				return
 			}
-			stmt.LastTransactions = append(stmt.LastTransactions, t)
+			stmt.LastTransactions = append(stmt.LastTransactions, &t)
 		}
 	}
 
-	err = json.NewEncoder(writer).Encode(stmt)
-	if err != nil {
-		writer.WriteHeader(500)
-		return
-	}
+	json.NewEncoder(writer).Encode(stmt)
+
 	writer.WriteHeader(200)
 
 }
