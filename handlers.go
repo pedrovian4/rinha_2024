@@ -1,19 +1,18 @@
 package main
 
 import (
-	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/pgxpool"
 	"net/http"
 	"strconv"
 	"time"
 )
 
 type Handler struct {
-	conn *pgxpool.Pool
+	conn *sql.DB
 }
 
 // BEGIN TRANSACTION
@@ -43,31 +42,26 @@ func (h *Handler) Transaction(writer http.ResponseWriter, request *http.Request)
 	writer.Header().Set("Content-Type", "application/json")
 	id, err := strconv.Atoi(request.PathValue("id"))
 	if err != nil {
-		fmt.Println("emcima")
-
 		http.Error(writer, "Invalid ID", http.StatusUnprocessableEntity)
 		return
 	}
-
 	tRequest, err := validateTransaction(*request)
 	if err != nil {
 		writer.WriteHeader(http.StatusUnprocessableEntity)
-		fmt.Println("aqui")
 		return
 	}
 	var c Clients
-	err = h.conn.QueryRow(context.Background(), "SELECT id, name, \"limit\" , balance FROM clients where id = $1", id).Scan(&c.Id, &c.Name, &c.Limit, &c.Balance)
+
+	err = h.conn.QueryRow("SELECT id, name, \"limit\" , balance FROM clients where id = $1", id).Scan(&c.Id, &c.Name, &c.Limit, &c.Balance)
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			fmt.Println("Not found")
 			writer.WriteHeader(http.StatusNotFound)
 			return
 		}
 		http.Error(writer, fmt.Sprintf("Internal Server Error %s", err.Error()), http.StatusInternalServerError)
 		return
 	}
-	tx, err := h.conn.Begin(context.Background())
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
@@ -80,22 +74,19 @@ func (h *Handler) Transaction(writer http.ResponseWriter, request *http.Request)
 		c.Balance -= tRequest.Value
 
 	} else if tRequest.Type == "c" {
-		c.Balance -= tRequest.Value
+		c.Balance += tRequest.Value
 	}
 
-	_, err = h.conn.Exec(context.Background(), "UPDATE clients set balance = $1 WHERE id = $2", c.Balance, c.Id)
+	_, err = h.conn.Exec("UPDATE clients set balance = $1 WHERE id = $2", c.Balance, c.Id)
 	if err != nil {
-		_ = tx.Rollback(context.Background())
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	_, err = h.conn.Exec(context.Background(), "INSERT INTO transactions (value, type, description, created_at, client_id)  VALUES ($1,$2,$3,$4, $5)", tRequest.Value, tRequest.Type, tRequest.Description, time.Now(), id)
+	_, err = h.conn.Exec("INSERT INTO transactions (value, type, description, created_at, client_id)  VALUES ($1,$2,$3,$4, $5)", tRequest.Value, tRequest.Type, tRequest.Description, time.Now(), id)
 	if err != nil {
-		_ = tx.Rollback(context.Background())
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	err = tx.Commit(context.Background())
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
@@ -105,7 +96,7 @@ func (h *Handler) Transaction(writer http.ResponseWriter, request *http.Request)
 		"limite": c.Limit,
 		"saldo":  c.Balance,
 	})
-	writer.WriteHeader(http.StatusOK)
+
 }
 
 // END TRANSACTION
@@ -120,7 +111,7 @@ func (h *Handler) BankStmt(writer http.ResponseWriter, request *http.Request) {
 	}
 
 	var balance, limit int
-	err = h.conn.QueryRow(context.Background(), "SELECT balance, \"limit\" FROM clients WHERE id = $1", id).Scan(&balance, &limit)
+	err = h.conn.QueryRow("SELECT balance, \"limit\" FROM clients WHERE id = $1", id).Scan(&balance, &limit)
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
@@ -132,7 +123,7 @@ func (h *Handler) BankStmt(writer http.ResponseWriter, request *http.Request) {
 		"data_extrato": time.Now(),
 		"limite":       limit,
 	}
-	rows, err := h.conn.Query(context.Background(), "SELECT value, type, description, created_at FROM transactions WHERE client_id = $1 ORDER BY created_at DESC LIMIT 10", id)
+	rows, err := h.conn.Query("SELECT value, type, description, created_at FROM transactions WHERE client_id = $1 ORDER BY created_at DESC LIMIT 10", id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			stmt.LastTransactions = nil
@@ -148,13 +139,11 @@ func (h *Handler) BankStmt(writer http.ResponseWriter, request *http.Request) {
 			if err != nil {
 				return
 			}
-			stmt.LastTransactions = append(stmt.LastTransactions, &t)
+			stmt.LastTransactions = append(stmt.LastTransactions, t)
 		}
 	}
 
 	json.NewEncoder(writer).Encode(stmt)
-
-	writer.WriteHeader(200)
 
 }
 

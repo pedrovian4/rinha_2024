@@ -1,37 +1,42 @@
 package main
 
 import (
-	"context"
-	"github.com/jackc/pgx/v4/pgxpool"
+	"database/sql"
+	"fmt"
+	_ "github.com/lib/pq"
 	"net/http"
 	"os"
 	"time"
 )
 
-func initDB() *pgxpool.Pool {
-	//dbUrl := "postgres://rinha:rinha@localhost:5432/rinha"
-	dbUrl := os.Getenv("DATABASE_URL")
+func initDB() (*sql.DB, error) {
+	dbURL := os.Getenv("DATABASE_URL")
+	//dbURL := "postgres://rinha:rinha@localhost:5432/rinha?sslmode=disable"
+	time.Sleep(5 * time.Second)
+	db, err := sql.Open("postgres", dbURL)
 
-	config, err := pgxpool.ParseConfig(dbUrl)
-	config.MaxConns = 100
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Println("Connected to the database.")
+	return db, nil
+}
+
+func main() {
+	db, err := initDB()
+	defer func(db *sql.DB) {
+		err := db.Close()
+		if err != nil {
+
+		}
+	}(db)
 
 	if err != nil {
 		panic(err)
 	}
-	time.Sleep(5 * time.Second)
-	conn, _ := pgxpool.ConnectConfig(context.Background(), config)
-	err = conn.Ping(context.Background())
-	for err != nil {
-		conn, _ = pgxpool.ConnectConfig(context.Background(), config)
-		err = conn.Ping(context.Background())
-	}
-	return conn
-}
-func main() {
-	conn := initDB()
 	var h Handler
-	h.conn = conn
-	defer conn.Close()
+	h.conn = db
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /clientes/{id}/transacoes", h.Transaction)
 	mux.HandleFunc("GET /clientes/{id}/extrato", h.BankStmt)
