@@ -10,8 +10,7 @@ RUN go mod download
 
 COPY . .
 
-RUN go build -o myapp
-
+RUN CGO_ENABLED=0 GOOS=linux go build  -a -installsuffix cgo -o myapp
 EXPOSE 8080
 
 CMD ["./myapp"]

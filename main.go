@@ -18,8 +18,6 @@ func initDB() (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	fmt.Println("Connected to the database.")
 	return db, nil
 }
 
@@ -28,7 +26,8 @@ func main() {
 	defer func(db *sql.DB) {
 		err := db.Close()
 		if err != nil {
-
+			fmt.Println(err.Error())
+			return
 		}
 	}(db)
 
@@ -40,5 +39,9 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /clientes/{id}/transacoes", h.Transaction)
 	mux.HandleFunc("GET /clientes/{id}/extrato", h.BankStmt)
-	http.ListenAndServe(":8080", mux)
+	err = http.ListenAndServe(":8080", mux)
+	if err != nil {
+		panic(err)
+		return
+	}
 }

@@ -16,10 +16,14 @@ type Transaction struct {
 	Description string    `json:"descricao"`
 	CreatedAt   time.Time `json:"realizado_em"`
 }
-
+type Balance struct {
+	Total       int       `json:"total"`
+	BalanceDate time.Time `json:"data_extrato"`
+	Limit       int       `json:"limite"`
+}
 type BankStmt struct {
-	Balance          map[string]any `json:"saldo"`
-	LastTransactions []Transaction  `json:"ultimas_transacoes"`
+	Balance          Balance         `json:"saldo"`
+	LastTransactions [10]Transaction `json:"ultimas_transacoes"`
 }
 
 type TransactionRequest struct {

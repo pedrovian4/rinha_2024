@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/jackc/pgx/v4"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -17,25 +18,25 @@ type Handler struct {
 
 // BEGIN TRANSACTION
 
-func validateTransaction(request http.Request) (*TransactionRequest, error) {
+func validateTransaction(body io.Reader) (TransactionRequest, error) {
 
 	var tRequest TransactionRequest
-	err := json.NewDecoder(request.Body).Decode(&tRequest)
+	err := json.NewDecoder(body).Decode(&tRequest)
 	if err != nil {
-		return nil, err
+		return tRequest, err
 	}
 	if "c" != tRequest.Type && "d" != tRequest.Type {
-		return nil, fmt.Errorf("type not available")
+		return tRequest, fmt.Errorf("type not available")
 	}
 
 	if len(tRequest.Description) > 10 {
-		return nil, fmt.Errorf("invalid description")
+		return tRequest, fmt.Errorf("invalid description")
 	}
 	if len(tRequest.Description) < 1 {
-		return nil, fmt.Errorf("invalid description")
+		return tRequest, fmt.Errorf("invalid description")
 	}
 
-	return &tRequest, nil
+	return tRequest, nil
 }
 
 func (h *Handler) Transaction(writer http.ResponseWriter, request *http.Request) {
@@ -45,7 +46,7 @@ func (h *Handler) Transaction(writer http.ResponseWriter, request *http.Request)
 		http.Error(writer, "Invalid ID", http.StatusUnprocessableEntity)
 		return
 	}
-	tRequest, err := validateTransaction(*request)
+	tRequest, err := validateTransaction(request.Body)
 	if err != nil {
 		writer.WriteHeader(http.StatusUnprocessableEntity)
 		return
@@ -101,7 +102,7 @@ func (h *Handler) Transaction(writer http.ResponseWriter, request *http.Request)
 
 // END TRANSACTION
 
-// START BANK STMT
+// BankStmt START
 func (h *Handler) BankStmt(writer http.ResponseWriter, request *http.Request) {
 	writer.Header().Set("Content-Type", "application/json")
 	id, err := strconv.Atoi(request.PathValue("id"))
@@ -118,32 +119,43 @@ func (h *Handler) BankStmt(writer http.ResponseWriter, request *http.Request) {
 	}
 	var stmt BankStmt
 
-	stmt.Balance = map[string]any{
-		"total":        balance,
-		"data_extrato": time.Now(),
-		"limite":       limit,
+	stmt.Balance = Balance{
+		Total:       balance,
+		BalanceDate: time.Now(),
+		Limit:       limit,
 	}
 	rows, err := h.conn.Query("SELECT value, type, description, created_at FROM transactions WHERE client_id = $1 ORDER BY created_at DESC LIMIT 10", id)
+	defer func(rows *sql.Rows) {
+		err := rows.Close()
+		if err != nil {
+
+		}
+	}(rows)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			stmt.LastTransactions = nil
 			return
 		} else {
 			http.Error(writer, err.Error(), http.StatusInternalServerError)
 			return
 		}
 	} else {
+		counter := 0
 		for rows.Next() {
 			var t Transaction
 			err := rows.Scan(&t.Value, &t.Type, &t.Description, &t.CreatedAt)
 			if err != nil {
 				return
 			}
-			stmt.LastTransactions = append(stmt.LastTransactions, t)
+			stmt.LastTransactions[counter] = t
+			counter++
 		}
 	}
 
-	json.NewEncoder(writer).Encode(stmt)
+	err = json.NewEncoder(writer).Encode(stmt)
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
 
 }
 
