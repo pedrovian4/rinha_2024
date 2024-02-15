@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -41,9 +42,13 @@ func validateTransaction(body io.Reader) (TransactionRequest, error) {
 
 func (h *Handler) Transaction(writer http.ResponseWriter, request *http.Request) {
 	writer.Header().Set("Content-Type", "application/json")
-	id, err := strconv.Atoi(request.PathValue("id"))
+	id, err := strconv.ParseUint(request.PathValue("id"), 10, 3)
 	if err != nil {
-		http.Error(writer, "Invalid ID", http.StatusUnprocessableEntity)
+		if strings.Contains(err.Error(), "value out of range") {
+			http.Error(writer, "Number is too large", http.StatusNotFound)
+		} else {
+			http.Error(writer, "Invalid ID", http.StatusUnprocessableEntity)
+		}
 		return
 	}
 	tRequest, err := validateTransaction(request.Body)
@@ -73,7 +78,6 @@ func (h *Handler) Transaction(writer http.ResponseWriter, request *http.Request)
 			return
 		}
 		c.Balance -= tRequest.Value
-
 	} else if tRequest.Type == "c" {
 		c.Balance += tRequest.Value
 	}
@@ -81,11 +85,13 @@ func (h *Handler) Transaction(writer http.ResponseWriter, request *http.Request)
 	_, err = h.conn.Exec("UPDATE clients set balance = $1 WHERE id = $2", c.Balance, c.Id)
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
+
 		return
 	}
 	_, err = h.conn.Exec("INSERT INTO transactions (value, type, description, created_at, client_id)  VALUES ($1,$2,$3,$4, $5)", tRequest.Value, tRequest.Type, tRequest.Description, time.Now(), id)
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
+
 		return
 	}
 	if err != nil {
@@ -97,7 +103,6 @@ func (h *Handler) Transaction(writer http.ResponseWriter, request *http.Request)
 		"limite": c.Limit,
 		"saldo":  c.Balance,
 	})
-
 }
 
 // END TRANSACTION
@@ -105,12 +110,15 @@ func (h *Handler) Transaction(writer http.ResponseWriter, request *http.Request)
 // BankStmt START
 func (h *Handler) BankStmt(writer http.ResponseWriter, request *http.Request) {
 	writer.Header().Set("Content-Type", "application/json")
-	id, err := strconv.Atoi(request.PathValue("id"))
+	id, err := strconv.ParseUint(request.PathValue("id"), 10, 3)
 	if err != nil {
-		http.Error(writer, err.Error(), http.StatusUnprocessableEntity)
+		if strings.Contains(err.Error(), "value out of range") {
+			http.Error(writer, "Number is too large", http.StatusNotFound)
+		} else {
+			http.Error(writer, "Invalid ID", http.StatusUnprocessableEntity)
+		}
 		return
 	}
-
 	var balance, limit int
 	err = h.conn.QueryRow("SELECT balance, \"limit\" FROM clients WHERE id = $1", id).Scan(&balance, &limit)
 	if err != nil {
@@ -133,6 +141,7 @@ func (h *Handler) BankStmt(writer http.ResponseWriter, request *http.Request) {
 	}(rows)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
+			writer.WriteHeader(404)
 			return
 		} else {
 			http.Error(writer, err.Error(), http.StatusInternalServerError)

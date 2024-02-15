@@ -10,6 +10,7 @@ import (
 )
 
 func initDB() (*sql.DB, error) {
+
 	dbURL := os.Getenv("DATABASE_URL")
 	//dbURL := "postgres://rinha:rinha@localhost:5432/rinha?sslmode=disable"
 	time.Sleep(5 * time.Second)
@@ -30,18 +31,15 @@ func main() {
 			return
 		}
 	}(db)
-
 	if err != nil {
-		panic(err)
+		return
 	}
 	var h Handler
 	h.conn = db
-	mux := http.NewServeMux()
-	mux.HandleFunc("POST /clientes/{id}/transacoes", h.Transaction)
-	mux.HandleFunc("GET /clientes/{id}/extrato", h.BankStmt)
-	err = http.ListenAndServe(":8080", mux)
+	http.HandleFunc("POST /clientes/{id}/transacoes", h.Transaction)
+	http.HandleFunc("GET /clientes/{id}/extrato", h.BankStmt)
+	err = http.ListenAndServe(":8080", nil)
 	if err != nil {
-		panic(err)
 		return
 	}
 }
